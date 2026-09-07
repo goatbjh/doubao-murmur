@@ -1,16 +1,13 @@
 """Tests for PasteHelper."""
 
-import subprocess
-from unittest.mock import patch, MagicMock
-
-import pytest
+from unittest.mock import patch
 
 from doubao_murmur.paste.paste_helper import PasteHelper
 
 
 class TestCopyToClipboard:
     def test_wl_copy_preferred(self):
-        with patch("shutil.which", return_value="/usr/bin/wl-copy") as mock_which, \
+        with patch("shutil.which", return_value="/usr/bin/wl-copy"), \
              patch("subprocess.run") as mock_run:
             PasteHelper._copy_to_clipboard("hello")
             mock_run.assert_called_once()
@@ -40,27 +37,12 @@ class TestCopyToClipboard:
 class TestSimulatePaste:
     def test_ydotool_preferred(self):
         with patch("shutil.which", return_value="/usr/bin/ydotool"), \
-             patch.object(PasteHelper, "_focused_window_is_terminal",
-                          return_value=False), \
              patch("subprocess.run") as mock_run:
             PasteHelper._simulate_paste()
             mock_run.assert_called_once()
             args = mock_run.call_args
             assert args[0][0] == [
-                "ydotool", "key", "29:1", "47:1", "47:0", "29:0"
-            ]
-
-    def test_ydotool_terminal_uses_ctrl_shift_v(self):
-        with patch("shutil.which", return_value="/usr/bin/ydotool"), \
-             patch.object(PasteHelper, "_focused_window_is_terminal",
-                          return_value=True), \
-             patch("subprocess.run") as mock_run:
-            PasteHelper._simulate_paste()
-            mock_run.assert_called_once()
-            args = mock_run.call_args
-            assert args[0][0] == [
-                "ydotool", "key",
-                "29:1", "42:1", "47:1", "47:0", "42:0", "29:0"
+                "ydotool", "key", "42:1", "110:1", "110:0", "42:0"
             ]
 
     def test_wtype_fallback(self):
@@ -70,11 +52,13 @@ class TestSimulatePaste:
             return None
 
         with patch("shutil.which", side_effect=which_side_effect), \
-             patch.object(PasteHelper, "_focused_window_is_terminal",
-                          return_value=False), \
              patch("subprocess.run") as mock_run:
             PasteHelper._simulate_paste()
             mock_run.assert_called_once()
+            args = mock_run.call_args
+            assert args[0][0] == [
+                "wtype", "-M", "shift", "-k", "Insert", "-m", "shift"
+            ]
 
     def test_xdotool_fallback(self):
         def which_side_effect(cmd):
@@ -83,28 +67,11 @@ class TestSimulatePaste:
             return None
 
         with patch("shutil.which", side_effect=which_side_effect), \
-             patch.object(PasteHelper, "_focused_window_is_terminal",
-                          return_value=False), \
              patch("subprocess.run") as mock_run:
             PasteHelper._simulate_paste()
             mock_run.assert_called_once()
             args = mock_run.call_args
-            assert args[0][0] == ["xdotool", "key", "ctrl+v"]
-
-    def test_xdotool_terminal_uses_ctrl_shift_v(self):
-        def which_side_effect(cmd):
-            if cmd == "xdotool":
-                return "/usr/bin/xdotool"
-            return None
-
-        with patch("shutil.which", side_effect=which_side_effect), \
-             patch.object(PasteHelper, "_focused_window_is_terminal",
-                          return_value=True), \
-             patch("subprocess.run") as mock_run:
-            PasteHelper._simulate_paste()
-            mock_run.assert_called_once()
-            args = mock_run.call_args
-            assert args[0][0] == ["xdotool", "key", "ctrl+shift+v"]
+            assert args[0][0] == ["xdotool", "key", "shift+Insert"]
 
     def test_flatpak_spawn_host_fallback(self):
         def which_side_effect(cmd):
@@ -114,53 +81,14 @@ class TestSimulatePaste:
 
         with patch("os.path.exists", return_value=True), \
              patch("shutil.which", side_effect=which_side_effect), \
-             patch.object(PasteHelper, "_focused_window_is_terminal",
-                          return_value=False), \
              patch("subprocess.run") as mock_run:
             PasteHelper._simulate_paste()
             mock_run.assert_called()
             args = mock_run.call_args
             assert args[0][0] == [
                 "flatpak-spawn", "--host", "ydotool", "key",
-                "29:1", "47:1", "47:0", "29:0"
+                "42:1", "110:1", "110:0", "42:0"
             ]
-
-
-class TestTerminalDetection:
-    def _run_detection(self, classname: bytes) -> bool:
-        def which_side_effect(cmd):
-            if cmd == "xdotool":
-                return "/usr/bin/xdotool"
-            return None
-
-        mock_result = MagicMock()
-        mock_result.stdout = classname
-        with patch("shutil.which", side_effect=which_side_effect), \
-             patch("subprocess.run", return_value=mock_result) as mock_run:
-            result = PasteHelper._focused_window_is_terminal()
-            args = mock_run.call_args
-            assert args[0][0] == [
-                "xdotool", "getactivewindow", "getwindowclassname"
-            ]
-            return result
-
-    def test_konsole_is_terminal(self):
-        assert self._run_detection(b"konsole\n") is True
-
-    def test_browser_is_not_terminal(self):
-        assert self._run_detection(b"google-chrome\n") is False
-
-    def test_case_insensitive(self):
-        assert self._run_detection(b"Alacritty\n") is True
-
-    def test_warp_is_terminal(self):
-        # Warp's WM class is "dev.warp.Warp" (xdotool getwindowclassname).
-        assert self._run_detection(b"dev.warp.Warp\n") is True
-
-    def test_no_xdotool_returns_false(self):
-        with patch("shutil.which", return_value=None), \
-             patch("os.path.exists", return_value=False):
-            assert PasteHelper._focused_window_is_terminal() is False
 
 
 class TestCopyOnly:

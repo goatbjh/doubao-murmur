@@ -74,6 +74,10 @@ def get_keyboard_config_path() -> Path:
 STOP_SAFETY_TIMEOUT = 1.0  # seconds
 DEBOUNCE_INTERVAL = 0.3  # seconds
 PASTE_DELAY = 0.05  # seconds between copy and paste simulation
+# Wait for the overlay/PTT windows to unmap so the compositor can return
+# keyboard focus to the app the user was dictating into before we inject
+# Shift+Insert. Too short and the keystroke lands on Murmur itself.
+FOCUS_RESTORE_DELAY = 0.18  # seconds after hide, before paste simulation
 AUTH_EXPIRY_DELAY = 2.0  # seconds before resetting after auth error
 
 # --- Overlay UI ---

@@ -1,4 +1,4 @@
-"""Copy text to clipboard and simulate Ctrl+V paste.
+"""Copy text to clipboard and simulate Shift+Insert paste.
 
 Mirrors PasteHelper.swift.
 
@@ -18,36 +18,6 @@ from doubao_murmur.config import PASTE_DELAY
 from doubao_murmur.host_tools import command_candidates
 
 logger = logging.getLogger(__name__)
-
-# Terminal emulators interpret Ctrl+V as a control sequence; their paste
-# shortcut is Ctrl+Shift+V instead. Matched against the focused window's
-# WM class (lowercased).
-_TERMINAL_WM_CLASSES = {
-    "konsole",
-    "yakuake",
-    "alacritty",
-    "kitty",
-    "foot",
-    "wezterm",
-    "org.wezfurlong.wezterm",
-    "gnome-terminal-server",
-    "xterm",
-    "urxvt",
-    "st",
-    "terminator",
-    "tilix",
-    "xfce4-terminal",
-    "lxterminal",
-    "deepin-terminal",
-    "qterminal",
-    "io.elementary.terminal",
-    "ghostty",
-    "com.mitchellh.ghostty",
-    "warp",
-    "warp-terminal",
-    "dev.warp.warp",
-}
-
 
 class PasteHelper:
     """Copy text to clipboard and simulate paste keystroke."""
@@ -125,18 +95,10 @@ class PasteHelper:
 
     @staticmethod
     def _simulate_paste() -> None:
-        """Simulate the paste keystroke for the focused window.
-
-        Terminals use Ctrl+Shift+V; everything else uses Ctrl+V.
-        """
-        use_shift = PasteHelper._focused_window_is_terminal()
-
+        """Simulate Shift+Insert for the focused window."""
         # Try ydotool (works on both Wayland and X11)
-        # Keycodes: 29=LEFTCTRL, 42=LEFTSHIFT, 47=V
-        if use_shift:
-            ydotool_keys = ["29:1", "42:1", "47:1", "47:0", "42:0", "29:0"]
-        else:
-            ydotool_keys = ["29:1", "47:1", "47:0", "29:0"]
+        # Linux input keycodes: 42=LEFTSHIFT, 110=INSERT
+        ydotool_keys = ["42:1", "110:1", "110:0", "42:0"]
         for command in command_candidates("ydotool"):
             try:
                 subprocess.run(
@@ -144,17 +106,13 @@ class PasteHelper:
                     check=True,
                     timeout=3,
                 )
-                logger.info("Paste simulated via ydotool")
+                logger.info("Paste simulated via ydotool (Shift+Insert)")
                 return
             except Exception as e:
                 logger.warning("ydotool failed: %s", e)
 
         # Try wtype (Wayland virtual keyboard)
-        if use_shift:
-            wtype_args = ["-M", "ctrl", "-M", "shift", "-P", "v",
-                          "-m", "shift", "-m", "ctrl"]
-        else:
-            wtype_args = ["-M", "ctrl", "-P", "v", "-m", "ctrl"]
+        wtype_args = ["-M", "shift", "-k", "Insert", "-m", "shift"]
         for command in command_candidates("wtype"):
             try:
                 subprocess.run(
@@ -162,21 +120,20 @@ class PasteHelper:
                     check=True,
                     timeout=3,
                 )
-                logger.info("Paste simulated via wtype")
+                logger.info("Paste simulated via wtype (Shift+Insert)")
                 return
             except Exception as e:
                 logger.warning("wtype failed: %s", e)
 
         # Try xdotool (X11 only)
-        xdotool_key = "ctrl+shift+v" if use_shift else "ctrl+v"
         for command in command_candidates("xdotool"):
             try:
                 subprocess.run(
-                    command + ["key", xdotool_key],
+                    command + ["key", "shift+Insert"],
                     check=True,
                     timeout=3,
                 )
-                logger.info("Paste simulated via xdotool (%s)", xdotool_key)
+                logger.info("Paste simulated via xdotool (Shift+Insert)")
                 return
             except Exception as e:
                 logger.warning("xdotool failed: %s", e)
@@ -186,26 +143,3 @@ class PasteHelper:
             "Text was copied to clipboard but could not auto-paste. "
             "Install ydotool or wtype for auto-paste."
         )
-
-    @staticmethod
-    def _focused_window_is_terminal() -> bool:
-        """Check whether the focused window is a terminal emulator (X11)."""
-        for command in command_candidates("xdotool"):
-            try:
-                result = subprocess.run(
-                    command + ["getactivewindow", "getwindowclassname"],
-                    capture_output=True,
-                    check=True,
-                    timeout=3,
-                )
-                wm_class = result.stdout.decode().strip().lower()
-                is_terminal = wm_class in _TERMINAL_WM_CLASSES
-                logger.info(
-                    "Focused window class: %s (terminal=%s)",
-                    wm_class,
-                    is_terminal,
-                )
-                return is_terminal
-            except Exception as e:
-                logger.warning("Active window detection failed: %s", e)
-        return False

@@ -17,7 +17,11 @@ from gi.repository import GLib
 from doubao_murmur.app_state import AppState, LoginStatus, RecordingState
 from doubao_murmur.asr_client import ASRClient
 from doubao_murmur.audio_capture import AudioCapture
-from doubao_murmur.config import AUTH_EXPIRY_DELAY, STOP_SAFETY_TIMEOUT
+from doubao_murmur.config import (
+    AUTH_EXPIRY_DELAY,
+    FOCUS_RESTORE_DELAY,
+    STOP_SAFETY_TIMEOUT,
+)
 from doubao_murmur.params_store import ASRParams, ParamsStore
 
 logger = logging.getLogger(__name__)
@@ -179,9 +183,20 @@ class TranscriptionManager:
     def _complete_transcription(self) -> None:
         text = self.app_state.transcription_text.strip()
         logger.info("Completing transcription: '%s'", text[:50])
-        if text and self.on_paste:
-            self.on_paste(text)
+        # Hide overlay/PTT first so the target input regains keyboard focus.
+        # Pasting before hide sends Shift+Insert into Murmur's own window.
         self._reset_to_idle()
+        if text and self.on_paste:
+            GLib.timeout_add(
+                int(FOCUS_RESTORE_DELAY * 1000),
+                self._paste_after_focus_restore,
+                text,
+            )
+
+    def _paste_after_focus_restore(self, text: str) -> bool:
+        if self.on_paste:
+            self.on_paste(text)
+        return GLib.SOURCE_REMOVE
 
     def _reset_to_idle(self) -> bool:
         self.awaiting_final_result = False
