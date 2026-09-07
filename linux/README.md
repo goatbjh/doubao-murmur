@@ -12,6 +12,7 @@
 - 📋 **自动粘贴**: 识别结果通过 `Shift+Insert` 自动粘贴到当前输入框
 - 🔐 **登录一次**: 通过内置 WebView 登录豆包，凭证持久化存储
 - 🛎 **系统托盘**: 常驻托盘 🎤 图标，左键打开控制面板，右键菜单登录/退出（KDE 等支持 StatusNotifierItem 的桌面）
+- 🛡️ **长期运行保护**: 自动移除失效的 evdev 设备、恢复热插拔键盘、限制动画帧率，并清理结束的 WebSocket/asyncio 资源
 - ⌨️ **屏幕触摸键盘**: SteamOS 桌面模式下的可拖动、可缩放软键盘，专为掌机握持设计的**分体**与**左/右单手**布局（见下文）
 
 ## ⌨️ 屏幕触摸键盘
@@ -48,7 +49,7 @@ SteamOS 桌面模式自带的虚拟键盘不能移动、不能缩放，常挡住
 
 ### 方法一: Flatpak (推荐)
 
-从 [Releases](../../../../releases) 页面下载 `doubao-murmur.flatpak`：
+从 [Releases](https://github.com/lilong7676/doubao-murmur/releases) 页面下载 `doubao-murmur.flatpak`：
 
 ```bash
 flatpak install --user doubao-murmur.flatpak
@@ -176,6 +177,22 @@ rm ~/.config/doubao-murmur/asr_params.json
 ### WebView 无法加载
 - 安装 WebKitGTK: `sudo pacman -S webkitgtk-6.0`
 - 确认网络连接正常
+
+### 长期运行后 CPU 占满一个核心
+
+Linux `1.4.6` 已修复两条已知路径：输入设备断开后反复读取 EOF/错误，以及录音悬浮窗无帧率限制地持续重绘。先确认运行版本：
+
+```bash
+flatpak info com.doubao.Murmur | grep -E 'Version|版本'
+```
+
+如果升级后仍然出现高 CPU，请先保留进程，不要立即重启，并记录以下信息以便定位具体线程：
+
+```bash
+pid=$(pgrep -n -f 'python3 -m doubao_murmur')
+top -H -p "$pid"
+tail -n 100 ~/.local/state/doubao-murmur/app.log
+```
 
 ## 📝 开发
 

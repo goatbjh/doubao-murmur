@@ -2,12 +2,24 @@
 
 通过劫持豆包 Web 版的语音识别能力，实现全局语音输入。支持 **macOS** 和 **Linux / SteamOS**（Steam Deck 等掌机）。
 
+项目托管于 GitHub：[lilong7676/doubao-murmur](https://github.com/lilong7676/doubao-murmur)。
+
 - **macOS**：按下右 `⌥ Option` 键开始/停止语音识别，识别结果自动复制到剪贴板并粘贴到当前光标所在的输入框。
 - **Linux / SteamOS**：按下右 `Alt` 键开始/停止；掌机上可在 Steam Input 桌面布局中把任意手柄按键（如 R3/R2）映射为右 Alt，即可**用手柄一键语音输入**。另外还内置了 **SteamOS 桌面模式的触摸软键盘**——可拖动 / 可缩放，并支持**分体**与**左 / 右单手**布局，方便掌机握持时打字。详见 [Linux 版说明](linux/README.md)。
 
 <p align="center">
   <img src="docs/screenshots/overlay_pannel.png" width="500" alt="语音识别悬浮窗">
 </p>
+
+## Linux 长期运行稳定性
+
+Linux `1.4.6` 针对后台长期运行加入了以下保护：
+
+- 输入设备断开或返回 EOF/错误时移除失效的 evdev fd，并定期重新扫描热插拔设备，避免监听线程占满一个 CPU 核心。
+- 录音指示器使用约 30 FPS 的单一定时器，不再通过 GTK idle 回调无限重绘。
+- ASR WebSocket 正常关闭时也会清理连接并恢复录音状态；连接线程结束后关闭对应 asyncio event loop。
+
+相关实现和回归测试位于 `linux/src/doubao_murmur/` 与 `linux/tests/`。
 
 ## 免责声明
 
@@ -30,11 +42,11 @@
 
 ### 安装
 
-**macOS**：从 [Releases](../../releases) 页面下载最新版本的 `Doubao-Murmur-vX.X.X.zip`，解压后将 `Doubao Murmur.app` 拖入「应用程序」文件夹即可。
+**macOS**：从 [Releases](https://github.com/lilong7676/doubao-murmur/releases) 页面下载最新版本的 `Doubao-Murmur-vX.X.X.zip`，解压后将 `Doubao Murmur.app` 拖入「应用程序」文件夹即可。
 
 > 要求 macOS 13.0+
 
-**Linux / SteamOS (Steam Deck)**：从 [Releases](../../releases) 页面下载 `doubao-murmur.flatpak`，然后：
+**Linux / SteamOS (Steam Deck)**：从 [Releases](https://github.com/lilong7676/doubao-murmur/releases) 页面下载 `doubao-murmur.flatpak`，然后：
 
 ```bash
 flatpak install --user doubao-murmur.flatpak
@@ -75,28 +87,38 @@ flatpak run com.doubao.Murmur
 
 ### 环境要求
 
-- macOS 13.0+
-- Xcode 15.0+
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+- macOS：macOS 13.0+、Xcode 15.0+、[XcodeGen](https://github.com/yonaskolb/XcodeGen)
+- Linux：Python 3.11+；构建 Flatpak 需要 `org.flatpak.Builder`、GNOME Platform/SDK 49
 
-### 构建与运行
+### 获取源码
 
 ```bash
-# 克隆项目
-git clone <repo-url>
+git clone https://github.com/lilong7676/doubao-murmur.git
 cd doubao-murmur
+```
 
-# 生成 Xcode 项目
+### macOS 构建与运行
+
+```bash
 xcodegen generate
-
-# 构建
 ./scripts/build.sh
-
-# 运行（构建后直接运行，日志输出到终端）
 ./scripts/run.sh
 
 # 或者一步完成构建+运行
 ./scripts/dev.sh
+```
+
+### Linux 测试与 Flatpak 构建
+
+```bash
+cd linux
+python3 -m venv --system-site-packages .venv
+.venv/bin/pip install -e ".[dev]"
+PYTHONPATH=src .venv/bin/python -m pytest tests/ -q
+
+flatpak install flathub org.flatpak.Builder org.gnome.Platform//49 org.gnome.Sdk//49
+make flatpak-install
+flatpak run com.doubao.Murmur
 ```
 
 ### 发布
