@@ -11,25 +11,50 @@
     <p>
       Doubao Murmur is a voice-to-text input tool that uses Doubao's ASR
       (Automatic Speech Recognition) service to convert speech to text in
-      real-time. It works as a global overlay with a push-to-talk button,
-      making it easy to dictate text into any application.
+      real-time. Press the right Alt key to start dictating from anywhere;
+      the transcription appears in a floating overlay and is pasted into
+      whatever application had focus.
     </p>
     <p xml:lang="zh_CN">
       豆包语音输入是一款语音转文字工具，使用豆包的 ASR（自动语音识别）服务
-      实时将语音转换为文字。它以全局悬浮窗的形式工作，提供一键录音按钮，
-      可以轻松地将文字输入到任何应用中。
+      实时将语音转换为文字。在任意应用中按下右 Alt 键即可开始说话，识别结果
+      显示在悬浮窗中，结束后自动粘贴回原来的输入框。
     </p>
   </description>
   <launchable type="desktop-id">com.doubao.Murmur.desktop</launchable>
   <url type="homepage">https://github.com/lilong7676/doubao-murmur</url>
   <developer_name>lilong7676</developer_name>
   <releases>
-    <release version="1.4.6" date="2026-09-06">
+    <release version="1.5.1" date="2026-08-13">
       <description>
-        <p>Prevent long-running idle CPU saturation: remove disconnected evdev
-           descriptors instead of polling EOF/errors forever, rescan input
-           devices after hot-plug, throttle the recording indicator to 30 FPS,
-           and recover cleanly when the ASR WebSocket closes normally.</p>
+        <p>Keeps the last word or two of a transcription that used to go missing
+           when you stopped recording. The service returns one result per audio
+           message and holds the final word back until more audio arrives, so
+           ending the stream abruptly meant that word was never transcribed;
+           recording now ends with a short pad of silence, and the transcript is
+           accepted once the results stop arriving rather than on the first one.</p>
+        <p>Fixes the global hotkey on Wayland sessions. The sandbox was never
+           granted /dev/input, so the evdev listener could not start; on Wayland
+           that is the only backend that works, because the preferred X11
+           listener cannot see keys sent to native Wayland windows.</p>
+        <p>Fixes auto-paste on Wayland desktops such as SteamOS. The clipboard
+           copy silently failed without wl-clipboard on the host, which is now
+           bundled, and the paste keystroke never reached native Wayland windows
+           because xdotool only injects into XWayland; a uinput-based injector
+           handles both Wayland and X11. Terminal windows are also detected
+           correctly on Plasma Wayland now, so they receive Ctrl+Shift+V instead
+           of a Ctrl+V that they swallowed as a control character.</p>
+        <p>A flaky network no longer forces you to log in again: cached
+           credentials are cleared only when the server actively rejects them,
+           not on handshake timeouts. Connecting also stays around half a second
+           on networks with a blackholed IPv6 path.</p>
+      </description>
+    </release>
+    <release version="1.5.0" date="2026-08-02">
+      <description>
+        <p>Adds a native Windows build alongside macOS and Linux. No changes to
+           the Linux app itself; the version is bumped so all three platforms
+           ship under one release tag.</p>
       </description>
     </release>
     <release version="1.4.5" date="2026-06-13">

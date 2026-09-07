@@ -196,7 +196,10 @@ class TestConnectionLifecycle:
             async def send(self, data):
                 return None
 
-        def connect(url, extra_headers=None, **kwargs):
+            async def close(self, *args):
+                return None
+
+        async def connect(url, extra_headers=None, **kwargs):
             return FakeConnection()
 
         monkeypatch.setattr(

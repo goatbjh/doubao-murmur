@@ -1,11 +1,12 @@
-# Xcode
-doubao-murmur.xcodeproj/
-xcuserdata/
-*.xcworkspace
-DerivedData/
-
-# Build output
+__pycache__/
+*.egg-info/
 build/
+build-dir/
+.flatpak-builder/
+local-repo/
+*.whl
+
+# Xcode
 *.pbxuser
 *.mode1v3
 *.mode2v3
