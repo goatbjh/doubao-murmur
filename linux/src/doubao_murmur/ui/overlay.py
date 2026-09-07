@@ -31,6 +31,8 @@ from doubao_murmur.ui.windowing import (
 
 logger = logging.getLogger(__name__)
 
+ANIMATION_INTERVAL_MS = 33  # approximately 30 FPS
+
 _OVERLAY_CSS = b"""
 .overlay-window {
     background: rgba(30, 30, 30, 0.95);
@@ -57,6 +59,7 @@ class Overlay:
         self._window: Gtk.Window | None = None
         self._label: Gtk.Label | None = None
         self._indicator: Gtk.DrawingArea | None = None
+        self._animation_source_id: int | None = None
 
     def _create_window(self) -> None:
         self._window = Gtk.Window()
@@ -140,19 +143,39 @@ class Overlay:
             cr.set_line_width(2)
             cr.arc(width / 2, height / 2, 5, angle, angle + math.pi * 1.6)
             cr.stroke()
-            GLib.idle_add(lambda: area.queue_draw() or GLib.SOURCE_REMOVE)
         elif state == RecordingState.RECORDING:
             # Pulsing red dot
             pulse = 0.5 + 0.5 * math.sin(time.time() * 5)
             cr.set_source_rgba(1, 0.2, 0.2, pulse)
             cr.arc(width / 2, height / 2, 5, 0, 2 * math.pi)
             cr.fill()
-            GLib.idle_add(lambda: area.queue_draw() or GLib.SOURCE_REMOVE)
         elif state == RecordingState.STOPPING:
             # Static gray dot
             cr.set_source_rgba(0.5, 0.5, 0.5, 0.8)
             cr.arc(width / 2, height / 2, 5, 0, 2 * math.pi)
             cr.fill()
+
+    def _start_animation(self) -> None:
+        if self._animation_source_id is None:
+            self._animation_source_id = GLib.timeout_add(
+                ANIMATION_INTERVAL_MS, self._animate_indicator
+            )
+
+    def _stop_animation(self) -> None:
+        if self._animation_source_id is not None:
+            GLib.source_remove(self._animation_source_id)
+            self._animation_source_id = None
+
+    def _animate_indicator(self) -> bool:
+        if self.app_state.recording_state not in (
+            RecordingState.STARTING,
+            RecordingState.RECORDING,
+        ):
+            self._animation_source_id = None
+            return GLib.SOURCE_REMOVE
+        if self._indicator:
+            self._indicator.queue_draw()
+        return GLib.SOURCE_CONTINUE
 
     def show(self) -> None:
         if not self._window:
@@ -160,8 +183,10 @@ class Overlay:
         self._update_content()
         if self._window:
             present_overlay(self._window, OverlayRole.STATUS)
+        self._start_animation()
 
     def hide(self) -> None:
+        self._stop_animation()
         if self._window:
             self._window.set_visible(False)
 

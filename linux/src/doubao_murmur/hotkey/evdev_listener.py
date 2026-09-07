@@ -14,6 +14,8 @@ import os
 import select
 import struct
 import threading
+import time
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,8 @@ KEY_RIGHTALT = 100
 # sizeof(struct input_event) on 64-bit Linux
 EVENT_SIZE = 24
 EVENT_FORMAT = "llHHi"
+POLL_TIMEOUT = 0.5
+RESCAN_INTERVAL = 2.0
 
 
 class EvdevListener:
@@ -40,15 +44,37 @@ class EvdevListener:
 
     @staticmethod
     def is_available() -> bool:
-        """Check if any evdev devices are accessible."""
+        """Check if any key-capable evdev device is accessible."""
         for path in sorted(glob.glob("/dev/input/event*")):
+            if not EvdevListener._supports_key_events(path):
+                continue
             try:
                 fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
                 os.close(fd)
                 return True
-            except PermissionError:
+            except OSError:
                 continue
         return False
+
+    @staticmethod
+    def _supports_key_events(path: str) -> bool:
+        """Return whether sysfs reports EV_KEY support for an event node.
+
+        If sysfs is unavailable (for example in a restricted container), keep
+        the device as a compatibility fallback rather than disabling hotkeys.
+        """
+        capability_path = (
+            Path("/sys/class/input")
+            / Path(path).name
+            / "device/capabilities/ev"
+        )
+        try:
+            event_types = int(
+                capability_path.read_text().strip().replace(" ", ""), 16
+            )
+        except (OSError, ValueError):
+            return True
+        return bool(event_types & (1 << EV_KEY))
 
     def start(self) -> bool:
         """Start listening. Returns False if no accessible devices."""
@@ -73,36 +99,73 @@ class EvdevListener:
         """Find /dev/input/event* files that are readable."""
         accessible = []
         for path in sorted(glob.glob("/dev/input/event*")):
+            if not self._supports_key_events(path):
+                continue
             try:
                 fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
                 os.close(fd)
                 accessible.append(path)
-            except PermissionError:
+            except OSError:
                 continue
         return accessible
 
     def _listen_loop(self, devices: list[str]) -> None:
         """Main read loop using select() for multiplexing."""
         fds: dict[int, str] = {}
-        for path in devices:
-            try:
-                fd = os.open(path, os.O_RDONLY)
-                fds[fd] = path
-            except Exception as e:
-                logger.warning("Cannot open %s: %s", path, e)
 
-        if not fds:
-            return
+        def add_devices(paths: list[str]) -> None:
+            open_paths = set(fds.values())
+            for path in paths:
+                if path in open_paths:
+                    continue
+                try:
+                    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+                    fds[fd] = path
+                    open_paths.add(path)
+                except Exception as error:
+                    logger.warning("Cannot open %s: %s", path, error)
+
+        add_devices(devices)
 
         buf_size = EVENT_SIZE * 16
+        next_rescan = time.monotonic() + RESCAN_INTERVAL
 
         try:
             while self._running:
-                readable, _, _ = select.select(list(fds.keys()), [], [], 0.5)
+                now = time.monotonic()
+                if now >= next_rescan:
+                    add_devices(self._find_keyboard_devices())
+                    next_rescan = now + RESCAN_INTERVAL
+                timeout = min(
+                    POLL_TIMEOUT, max(0.0, next_rescan - time.monotonic())
+                )
+                readable, _, _ = select.select(
+                    list(fds.keys()), [], [], timeout
+                )
                 for fd in readable:
                     try:
                         data = os.read(fd, buf_size)
-                    except OSError:
+                    except (BlockingIOError, InterruptedError):
+                        continue
+                    except OSError as error:
+                        path = fds.pop(fd, "unknown device")
+                        logger.warning(
+                            "evdev device unavailable, removing %s: %s",
+                            path,
+                            error,
+                        )
+                        try:
+                            os.close(fd)
+                        except OSError:
+                            pass
+                        continue
+                    if not data:
+                        path = fds.pop(fd, "unknown device")
+                        logger.info("evdev device closed, removing %s", path)
+                        try:
+                            os.close(fd)
+                        except OSError:
+                            pass
                         continue
                     for i in range(0, len(data), EVENT_SIZE):
                         if i + EVENT_SIZE > len(data):

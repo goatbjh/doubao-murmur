@@ -1,7 +1,9 @@
 """Tests for ASR client URL building and message parsing."""
 
-import json
+import asyncio
 import builtins
+import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -158,6 +160,58 @@ class TestMessageParsing:
 
         client._handle_message("not json at all")
         assert received == []
+
+
+class TestConnectionLifecycle:
+    def test_connection_thread_closes_its_event_loop(
+        self, client, sample_params, monkeypatch
+    ):
+        async def connect_and_return(params):
+            return None
+
+        monkeypatch.setattr(client, "_connect_and_listen", connect_and_return)
+
+        client.connect(sample_params)
+        client._thread.join(timeout=1)
+
+        assert not client._thread.is_alive()
+        assert client._loop.is_closed()
+
+    def test_clean_remote_close_reports_error_and_disconnects(
+        self, client, sample_params, monkeypatch
+    ):
+        class FakeConnection:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                raise StopAsyncIteration
+
+            async def send(self, data):
+                return None
+
+        def connect(url, extra_headers=None, **kwargs):
+            return FakeConnection()
+
+        monkeypatch.setattr(
+            "doubao_murmur.asr_client._load_websockets",
+            lambda: SimpleNamespace(connect=connect),
+        )
+        errors = []
+        client.on_error = errors.append
+
+        asyncio.run(client._connect_and_listen(sample_params))
+
+        assert not client.is_connected
+        assert client._ws is None
+        assert len(errors) == 1
+        assert "closed" in str(errors[0]).lower()
 
 
 class TestCookieHeader:

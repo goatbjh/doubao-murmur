@@ -66,9 +66,22 @@ class ASRClient:
         self._thread.start()
 
     def _run_loop(self, params: ASRParams) -> None:
-        """Run asyncio event loop in background thread."""
-        asyncio.set_event_loop(self._loop)
-        self._loop.run_until_complete(self._connect_and_listen(params))
+        """Run and close the per-connection asyncio event loop."""
+        loop = self._loop
+        if loop is None:
+            return
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self._connect_and_listen(params))
+        finally:
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            if pending:
+                loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True)
+                )
+            loop.close()
 
     async def _connect_and_listen(self, params: ASRParams) -> None:
         """Build URL, connect, receive messages."""
@@ -105,6 +118,18 @@ class ASRClient:
                 async for message in ws:
                     self._handle_message(message)
 
+                # A clean remote close ends the iterator without raising.
+                # While actively recording that is still a terminal failure;
+                # notify the manager so it cannot remain stuck in RECORDING.
+                if self._connected:
+                    error = ConnectionError(
+                        "ASR WebSocket closed before recognition finished"
+                    )
+                    logger.warning("WebSocket closed: %s", error)
+                    self._connected = False
+                    if self.on_error:
+                        self.on_error(error)
+
         except Exception as e:
             if _is_connection_closed_error(e):
                 logger.warning("WebSocket closed: %s", e)
@@ -117,6 +142,9 @@ class ASRClient:
                 self._connected = False
                 if self.on_error:
                     self.on_error(e)
+        finally:
+            self._connected = False
+            self._ws = None
 
     def _build_url(self, params: ASRParams) -> str:
         """Construct the full WSS URL with query parameters."""

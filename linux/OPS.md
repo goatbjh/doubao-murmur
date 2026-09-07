@@ -1,13 +1,13 @@
 # Doubao Murmur 本机运维说明
 
 > 本机部署记录：Flatpak 用户安装 + 登录自启动 + 识别完成后自动 `Shift+Insert`。  
-> 源码：`/sync/code/doubao-murmur`（上游 `v1.4.5` + 本地粘贴/焦点补丁）
+> 源码：`/sync/code/doubao-murmur`（本地 `v1.4.6`：上游 `v1.4.5` + 粘贴/焦点与长期 CPU 修复）
 
 ## 当前状态（2026-07-22）
 
 | 项 | 值 |
 |----|----|
-| Flatpak 应用 | `com.doubao.Murmur`（user 安装，branch `master`） |
+| Flatpak 应用 | `com.doubao.Murmur` `1.4.6`（user 安装，branch `master`） |
 | 源码目录 | `/sync/code/doubao-murmur` |
 | 自启动 | 已开启 |
 | 自启动文件 | `~/.config/autostart/com.doubao.Murmur.desktop` |
@@ -185,6 +185,14 @@ cd /sync/code/doubao-murmur/linux
 # uv pip install --python .venv/bin/python pytest pytest-asyncio websockets sounddevice python-xlib
 PYTHONPATH=src .venv/bin/python -m pytest tests/ -v
 ```
+
+## 长期 CPU 修复（本地 1.4.6）
+
+- evdev 输入设备返回 EOF/`ENODEV`/`EIO` 后关闭并移除 fd，避免无等待忙循环占满一个 CPU 核心。
+- 每两秒重新枚举支持 `EV_KEY` 的输入设备，键盘热插拔后无需重启应用。
+- 录音指示器使用约 30 FPS 的单一定时器，不再从绘制回调中无限 `idle_add(queue_draw)`。
+- ASR WebSocket 正常 EOF 也会结束连接并通知状态机，避免界面永久卡在 `RECORDING`。
+- 每个 ASR 连接结束后关闭对应 asyncio event loop，避免长期使用时积累 selector 资源。
 
 ## 常见问题
 

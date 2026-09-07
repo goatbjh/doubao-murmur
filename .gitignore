@@ -28,3 +28,7 @@ build/
 Packages/
 Package.pins
 Package.resolved
+
+# Local agent instructions
+AGENTS.md
+CLAUDE.md

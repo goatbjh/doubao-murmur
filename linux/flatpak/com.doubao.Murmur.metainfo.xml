@@ -24,6 +24,14 @@
   <url type="homepage">https://github.com/lilong7676/doubao-murmur</url>
   <developer_name>lilong7676</developer_name>
   <releases>
+    <release version="1.4.6" date="2026-09-06">
+      <description>
+        <p>Prevent long-running idle CPU saturation: remove disconnected evdev
+           descriptors instead of polling EOF/errors forever, rescan input
+           devices after hot-plug, throttle the recording indicator to 30 FPS,
+           and recover cleanly when the ASR WebSocket closes normally.</p>
+      </description>
+    </release>
     <release version="1.4.5" date="2026-06-13">
       <description>
         <p>Auto-paste into the Warp terminal: its window class
